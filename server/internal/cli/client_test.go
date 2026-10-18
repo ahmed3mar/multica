@@ -625,3 +625,64 @@ func TestHTTPErrorTaskScopedFollowsTheRequestNotTheClient(t *testing.T) {
 		}
 	})
 }
+
+func TestSetCloudflareAccessHeaders(t *testing.T) {
+	t.Run("absent by default", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "http://example.com/api/me", nil)
+		setCloudflareAccessHeaders(req)
+		if got := req.Header.Get("CF-Access-Client-Id"); got != "" {
+			t.Fatalf("CF-Access-Client-Id = %q, want empty", got)
+		}
+		if got := req.Header.Get("Cookie"); got != "" {
+			t.Fatalf("Cookie = %q, want empty", got)
+		}
+	})
+
+	t.Run("service token", func(t *testing.T) {
+		t.Setenv("CF_ACCESS_CLIENT_ID", " id.access ")
+		t.Setenv("CF_ACCESS_CLIENT_SECRET", "secret")
+		req := httptest.NewRequest(http.MethodGet, "http://example.com/api/me", nil)
+		setCloudflareAccessHeaders(req)
+		if got := req.Header.Get("CF-Access-Client-Id"); got != "id.access" {
+			t.Fatalf("CF-Access-Client-Id = %q, want trimmed id.access", got)
+		}
+		if got := req.Header.Get("CF-Access-Client-Secret"); got != "secret" {
+			t.Fatalf("CF-Access-Client-Secret = %q", got)
+		}
+	})
+
+	t.Run("session cookie from env", func(t *testing.T) {
+		t.Setenv("MULTICA_CF_ACCESS_COOKIE", "jwt-value")
+		req := httptest.NewRequest(http.MethodGet, "http://example.com/api/me", nil)
+		setCloudflareAccessHeaders(req)
+		if got := req.Header.Get("Cookie"); got != "CF_Authorization=jwt-value" {
+			t.Fatalf("Cookie = %q", got)
+		}
+	})
+
+	t.Run("session cookie from config", func(t *testing.T) {
+		t.Setenv("MULTICA_CF_ACCESS_COOKIE", "")
+		prev := CFAccessCookie
+		CFAccessCookie = "from-config"
+		t.Cleanup(func() { CFAccessCookie = prev })
+
+		req := httptest.NewRequest(http.MethodGet, "http://example.com/api/me", nil)
+		setCloudflareAccessHeaders(req)
+		if got := req.Header.Get("Cookie"); got != "CF_Authorization=from-config" {
+			t.Fatalf("Cookie = %q", got)
+		}
+	})
+
+	t.Run("env wins over config", func(t *testing.T) {
+		t.Setenv("MULTICA_CF_ACCESS_COOKIE", "from-env")
+		prev := CFAccessCookie
+		CFAccessCookie = "from-config"
+		t.Cleanup(func() { CFAccessCookie = prev })
+
+		req := httptest.NewRequest(http.MethodGet, "http://example.com/api/me", nil)
+		setCloudflareAccessHeaders(req)
+		if got := req.Header.Get("Cookie"); got != "CF_Authorization=from-env" {
+			t.Fatalf("Cookie = %q, want env to win", got)
+		}
+	})
+}

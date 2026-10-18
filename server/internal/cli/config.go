@@ -26,6 +26,15 @@ type CLIConfig struct {
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	Token       string `json:"token,omitempty"`
 
+	// CFAccessCookie is a Cloudflare Access CF_Authorization session JWT,
+	// sent as a cookie on every API request when the server sits behind Zero
+	// Trust. Without it the edge answers with a 302 to the Access login page
+	// and the CLI never reaches the API. Browser sessions expire within a
+	// day; a service token (CF_ACCESS_CLIENT_ID/SECRET) is the durable
+	// alternative. Resolution precedence (highest wins):
+	// MULTICA_CF_ACCESS_COOKIE env, this field.
+	CFAccessCookie string `json:"cf_access_cookie,omitempty"`
+
 	// DeviceName is the human-readable label shown in the server's Runtimes
 	// UI for the daemon started with this profile. When multiple daemons run
 	// on the same host under different profiles (typical for shared servers

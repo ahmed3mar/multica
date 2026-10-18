@@ -32,6 +32,7 @@ var configSetSupportedKeys = []string{
 	"server_url",
 	"app_url",
 	"workspace_id",
+	"cf_access_cookie",
 	"device_name",
 	"runtime_name",
 	"workspaces_root",
@@ -51,7 +52,7 @@ var configSetCmd = &cobra.Command{
 	Use:   "set <key> <value>",
 	Short: "Set a CLI configuration value",
 	Long: "Supported keys: " +
-		"server_url, app_url, workspace_id, " +
+		"server_url, app_url, workspace_id, cf_access_cookie, " +
 		"device_name, runtime_name, workspaces_root, max_concurrent_tasks, poll_interval, ws_claim_poll_interval, " +
 		"heartbeat_interval, agent_timeout, " +
 		"codex_semantic_inactivity_timeout, codex_handshake_timeout, " +
@@ -80,6 +81,16 @@ func init() {
 	configCmd.AddCommand(configSetCmd)
 }
 
+// secretDisplay renders a credential for `config show` without printing it.
+// The value is a bearer credential for the Access-protected host, and
+// `config show` output routinely ends up in bug reports and agent transcripts.
+func secretDisplay(v string) string {
+	if strings.TrimSpace(v) == "" {
+		return "(not set)"
+	}
+	return "(set)"
+}
+
 func runConfigShow(cmd *cobra.Command, _ []string) error {
 	if err := requireTaskLocalConfigRoot(); err != nil {
 		return err
@@ -98,6 +109,7 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "server_url:", valueOrDefault(cfg.ServerURL, "(not set)"))
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "app_url:", valueOrDefault(cfg.AppURL, "(not set)"))
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "workspace_id:", valueOrDefault(cfg.WorkspaceID, "(not set)"))
+	fmt.Fprintf(os.Stdout, "%-34s %s\n", "cf_access_cookie:", secretDisplay(cfg.CFAccessCookie))
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "device_name:", valueOrDefault(cfg.DeviceName, "(not set)"))
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "runtime_name:", valueOrDefault(cfg.RuntimeName, "(not set)"))
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "workspaces_root:", valueOrDefault(cfg.WorkspacesRoot, "(not set)"))
@@ -135,8 +147,12 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	}
 
 	storedValue := value
-	if key == "workspaces_root" {
+	switch key {
+	case "workspaces_root":
 		storedValue = cfg.WorkspacesRoot
+	case "cf_access_cookie":
+		// Never echo the credential back: shells keep scrollback and CI keeps logs.
+		storedValue = secretDisplay(cfg.CFAccessCookie)
 	}
 	fmt.Fprintf(os.Stderr, "Set %s = %s\n", key, storedValue)
 	return nil
@@ -160,6 +176,8 @@ func applyConfigSet(cfg *cli.CLIConfig, key, value string) error {
 		cfg.AppURL = value
 	case "workspace_id":
 		cfg.WorkspaceID = value
+	case "cf_access_cookie":
+		cfg.CFAccessCookie = strings.TrimSpace(value)
 	case "device_name":
 		cfg.DeviceName = value
 	case "runtime_name":

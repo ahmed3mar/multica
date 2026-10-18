@@ -31,6 +31,16 @@ var rootCmd = &cobra.Command{
 	Long:          "Work seamlessly with Multica from the command line.",
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	// Publish the profile's persisted Cloudflare Access cookie to the API
+	// client before any command runs. Done here rather than per-client
+	// because --profile lives on the root command and the cli package has no
+	// way to resolve it. A missing or unreadable config is not an error: the
+	// cookie only matters for servers behind Zero Trust.
+	PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		if cfg, err := cli.LoadCLIConfigForProfile(resolveProfile(cmd)); err == nil {
+			cli.CFAccessCookie = cfg.CFAccessCookie
+		}
+	},
 }
 
 func init() {

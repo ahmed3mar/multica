@@ -25,6 +25,12 @@ var ClientVersion = "dev"
 // or alternative entry points; defaults to "cli".
 var ClientPlatform = "cli"
 
+// CFAccessCookie holds the persisted cf_access_cookie for the active profile.
+// The multica binary sets it once from config before any command runs, so the
+// package doesn't have to resolve --profile on every request. The
+// MULTICA_CF_ACCESS_COOKIE env var takes precedence over it.
+var CFAccessCookie string
+
 // ClientOS is the normalized operating system string sent as X-Client-OS.
 // Computed once from runtime.GOOS so the server doesn't need to reverse-map
 // Go's os names ("darwin"/"windows"/"linux") into the protocol vocabulary.
@@ -214,8 +220,31 @@ func NewAPIClient(baseURL, workspaceID, token string) *APIClient {
 // differ on every read and therefore defeat agent prompt caching.
 const clientCapabilities = "stable_attachment_urls"
 
+// setCloudflareAccessHeaders forwards a Cloudflare Access credential when the
+// server is fronted by Zero Trust. Without one the edge answers every request
+// with a 302 to the Access login page, so the CLI never reaches the API and
+// reports the response as an auth failure against its own token.
+//
+// CF_ACCESS_CLIENT_ID/SECRET is a service token, the durable option, and
+// requires a Service Auth policy on the Access application. MULTICA_CF_ACCESS_COOKIE
+// carries a browser CF_Authorization session instead, which expires within a day.
+func setCloudflareAccessHeaders(req *http.Request) {
+	if id := strings.TrimSpace(os.Getenv("CF_ACCESS_CLIENT_ID")); id != "" {
+		req.Header.Set("CF-Access-Client-Id", id)
+		req.Header.Set("CF-Access-Client-Secret", strings.TrimSpace(os.Getenv("CF_ACCESS_CLIENT_SECRET")))
+	}
+	cookie := strings.TrimSpace(os.Getenv("MULTICA_CF_ACCESS_COOKIE"))
+	if cookie == "" {
+		cookie = strings.TrimSpace(CFAccessCookie)
+	}
+	if cookie != "" {
+		req.Header.Add("Cookie", "CF_Authorization="+cookie)
+	}
+}
+
 func (c *APIClient) setHeaders(req *http.Request) {
 	req.Header.Set("X-Client-Capabilities", clientCapabilities)
+	setCloudflareAccessHeaders(req)
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
